@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log File Parser</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+    body { min-height: 100vh; background: linear-gradient(135deg, #eff6ff, #eef2ff); padding: 2rem; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 2rem; font-weight: 700; color: #1e293b; margin-bottom: .25rem; text-align: center; }
+    .subtitle { color: #64748b; text-align: center; margin-bottom: 2rem; }
+    .card { background: white; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); padding: 2rem; margin-bottom: 1.5rem; }
+    .upload-area { border: 2px dashed #93c5fd; border-radius: 10px; padding: 2.5rem; text-align: center; cursor: pointer; transition: all .2s; }
+    .upload-area:hover { border-color: #3b82f6; background: #eff6ff; }
+    .upload-area input { display: none; }
+    .upload-icon { font-size: 2.5rem; margin-bottom: .5rem; }
+    .upload-label { font-size: 1.1rem; font-weight: 600; color: #374151; margin-bottom: .25rem; }
+    .upload-hint { font-size: .85rem; color: #9ca3af; }
+    .file-list { margin-top: .75rem; font-size: .85rem; color: #4b5563; }
+    .file-list ul { list-style: disc; padding-left: 1.5rem; margin-top: .5rem; }
+    .alert { display: flex; align-items: center; gap: .75rem; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: .9rem; }
+    .alert-blue { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
+    .alert-red { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .alert-green { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .stats { background: #f8fafc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; font-size: .9rem; color: #374151; }
+    .stats span { color: #3b82f6; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-bottom: 1rem; }
+    thead tr { background: #3b82f6; color: white; }
+    th { padding: .6rem 1rem; text-align: left; font-weight: 600; }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:nth-child(odd) { background: white; }
+    td { padding: .6rem 1rem; border-bottom: 1px solid #e2e8f0; }
+    .hint { font-size: .75rem; color: #9ca3af; margin-bottom: 1rem; }
+    label.field-label { display: block; font-size: .875rem; font-weight: 600; color: #374151; margin-bottom: .5rem; }
+    input[type="text"] { width: 100%; padding: .6rem 1rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: .9rem; outline: none; margin-bottom: .25rem; }
+    input[type="text"]:focus { border-color: #22c55e; box-shadow: 0 0 0 2px #bbf7d0; }
+    .field-hint { font-size: .75rem; color: #9ca3af; margin-bottom: 1rem; }
+    .radio-group { display: flex; gap: 1.5rem; margin-bottom: 1rem; }
+    .radio-group label { display: flex; align-items: center; gap: .4rem; font-size: .9rem; color: #374151; cursor: pointer; }
+    .btn { width: 100%; padding: .85rem; border: none; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: .5rem; transition: background .2s; }
+    .btn-green { background: #22c55e; color: white; }
+    .btn-green:hover { background: #16a34a; }
+    .empty-state { text-align: center; padding: 3rem; color: #9ca3af; }
+    .footer-info { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 1rem; font-size: .85rem; color: #374151; }
+    .footer-info strong { font-weight: 600; }
+    #download-section { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Log File Parser</h1>
+    <p class="subtitle">Extract Hot Folder assignments and generate spreadsheets</p>
+
+    <div class="card">
+      <!-- Upload Area -->
+      <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+        <div class="upload-icon">📂</div>
+        <p class="upload-label">Click to upload or drag and drop</p>
+        <p class="upload-hint">Log files (*.log, *.txt) — multiple files supported</p>
+        <input type="file" id="fileInput" accept=".log,.txt" multiple onchange="handleFiles(this.files)">
+      </div>
+      <div class="file-list" id="fileList"></div>
+
+      <!-- Status Messages -->
+      <div id="statusMsg" style="margin-top:1rem;"></div>
+
+      <!-- Data Preview -->
+      <div id="download-section">
+        <div class="stats" id="statsBox"></div>
+        <div style="overflow-x:auto;">
+          <table id="previewTable">
+            <thead>
+              <tr>
+                <th>First Name</th>
+                <th>Last Name</th>
+                <th>Online Code</th>
+                <th>Image</th>
+              </tr>
+            </thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+        </div>
+        <p class="hint" id="previewHint"></p>
+
+        <!-- Download Options -->
+        <label class="field-label">File Name (optional)</label>
+        <input type="text" id="fileName" placeholder="hot_folder_assignments_2025-11-27">
+        <p class="field-hint">Leave blank to use default name with today's date</p>
+
+        <label class="field-label">File Format</label>
+        <div class="radio-group">
+          <label><input type="radio" name="format" value="xlsx" checked> Excel (.xlsx)</label>
+          <label><input type="radio" name="format" value="csv"> CSV (.csv)</label>
+        </div>
+
+        <button class="btn btn-green" onclick="downloadFile()">
+          ⬇️ Download
+        </button>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="emptyState">
+        <p>Upload a log file to get started</p>
+      </div>
+    </div>
+
+    <div class="footer-info">
+      <strong>How it works:</strong> Upload one or more renderer log files. The tool will extract all Hot Folder Subject Assign entries, combine and deduplicate the data, then generate a formatted Excel or CSV file with First Name, Last Name, Online Code, and Image filename.
+    </div>
+  </div>
+
+  <script>
+    let parsedData = [];
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('statusMsg');
+      if (!msg) { el.innerHTML = ''; return; }
+      const icons = { blue: '⏳', red: '❌', green: '✅' };
+      el.innerHTML = `<div class="alert alert-${type}">${icons[type]} ${msg}</div>`;
+    }
+
+    function parseLogFile(content) {
+      const lines = content.split('\n');
+      const dataMap = new Map();
+      lines.forEach(line => {
+        if (line.includes('[Hot Folder Subject Assign]')) {
+          const match = line.match(/\[Hot Folder Subject Assign\]\s+([^:]+):([^:]+):(-?\d+):(-?\d*):(.+?)(?:", , {}|$)/);
+          if (match) {
+            const firstName = match[1].trim();
+            const lastName = match[2].trim();
+            const onlineCode = match[4].trim() || 'N/A';
+            const imagePath = match[5].trim();
+            const imageFilename = imagePath.includes('\\')
+              ? imagePath.split('\\').pop()
+              : imagePath.split('/').pop();
+            const key = `${firstName}:${lastName}:${onlineCode}:${imageFilename}`;
+            if (!dataMap.has(key)) {
+              dataMap.set(key, { 'First Name': firstName, 'Last Name': lastName, 'Online Code': onlineCode, 'Image': imageFilename });
+            }
+          }
+        }
+      });
+      return Array.from(dataMap.values());
+    }
+
+    async function handleFiles(files) {
+      if (!files.length) return;
+
+      // Show file list
+      const fileListEl = document.getElementById('fileList');
+      fileListEl.innerHTML = `<p style="font-weight:600;margin-top:.5rem;">Selected files (${files.length}):</p><ul>${Array.from(files).map(f => `<li>${f.name}</li>`).join('')}</ul>`;
+
+      showStatus('Processing log files...', 'blue');
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('download-section').style.display = 'none';
+
+      const combinedMap = new Map();
+      let totalRecords = 0;
+
+      for (const file of files) {
+        const content = await file.text();
+        const records = parseLogFile(content);
+        totalRecords += records.length;
+        records.forEach(r => {
+          const key = `${r['First Name']}:${r['Last Name']}:${r['Online Code']}:${r['Image']}`;
+          if (!combinedMap.has(key)) combinedMap.set(key, r);
+        });
+      }
+
+      parsedData = Array.from(combinedMap.values());
+
+      if (parsedData.length === 0) {
+        showStatus('No Hot Folder Subject Assign entries found in any of the log files.', 'red');
+        document.getElementById('emptyState').style.display = 'block';
+        return;
+      }
+
+      // Stats
+      document.getElementById('statsBox').innerHTML = `Total Records: <span>${parsedData.length}</span> unique (from ${totalRecords} total across ${files.length} file(s))`;
+
+      // Preview table
+      const tbody = document.getElementById('previewBody');
+      tbody.innerHTML = parsedData.slice(0, 10).map(r =>
+        `<tr><td>${r['First Name']}</td><td>${r['Last Name']}</td><td>${r['Online Code']}</td><td>${r['Image']}</td></tr>`
+      ).join('');
+
+      document.getElementById('previewHint').textContent = parsedData.length > 10
+        ? `Showing first 10 of ${parsedData.length} records`
+        : '';
+
+      showStatus(`Successfully parsed ${parsedData.length} unique records!`, 'green');
+      document.getElementById('download-section').style.display = 'block';
+    }
+
+    // Drag and drop support
+    const uploadArea = document.querySelector('.upload-area');
+
+    ['dragenter', 'dragover'].forEach(evt => {
+      uploadArea.addEventListener(evt, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadArea.style.borderColor = '#3b82f6';
+        uploadArea.style.background = '#eff6ff';
+      });
+    });
+
+    ['dragleave', 'dragend'].forEach(evt => {
+      uploadArea.addEventListener(evt, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadArea.style.borderColor = '#93c5fd';
+        uploadArea.style.background = '';
+      });
+    });
+
+    uploadArea.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      uploadArea.style.borderColor = '#93c5fd';
+      uploadArea.style.background = '';
+      const files = e.dataTransfer.files;
+      if (files.length) handleFiles(files);
+    });
+
+    // Prevent browser from opening files dropped outside the upload area
+    document.addEventListener('dragover', e => e.preventDefault());
+    document.addEventListener('drop', e => e.preventDefault());
+
+    function downloadFile() {
+      if (!parsedData.length) return;
+      const timestamp = new Date().toISOString().split('T')[0];
+      const customName = document.getElementById('fileName').value.trim();
+      const baseName = customName || `hot_folder_assignments_${timestamp}`;
+      const format = document.querySelector('input[name="format"]:checked').value;
+
+      if (format === 'csv') {
+        const csv = Papa.unparse(parsedData);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = baseName.endsWith('.csv') ? baseName : `${baseName}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }, 100);
+      } else {
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(parsedData);
+        ws['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 30 }];
+        XLSX.utils.book_append_sheet(wb, ws, 'Hot Folder Assignments');
+        const wbOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbOut], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = baseName.endsWith('.xlsx') ? baseName : `${baseName}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }, 100);
+      }
+    }
+  </script>
+</body>
+</html>
