@@ -127,7 +127,7 @@
       const dataMap = new Map();
       lines.forEach(line => {
         if (line.includes('[Hot Folder Subject Assign]')) {
-          const match = line.match(/\[Hot Folder Subject Assign\]\s+([^:]+):([^:]+):(-?\d+):(-?\d*):(.+?)(?:", , {}|$)/);
+          const match = line.match(/\[Hot Folder Subject Assign\]\s+([^:]+):([^:]+):(-?\d+):(-?\d*):(.+?)(?:\s*",\s*,\s*\{|$)/);
           if (match) {
             const firstName = match[1].trim();
             const lastName = match[2].trim();
